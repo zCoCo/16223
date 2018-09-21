@@ -1,3 +1,5 @@
+#include <time.h>
+unsigned long millis(){ return 1000 * clock() / CLOCKS_PER_SEC; }
 /* Example Usage:
 void setup(){
 // Basic Call:
@@ -20,6 +22,7 @@ can't be converted to function pointers. */
 #define DO(x) do_([](){x;})
 // More Legible Shorthand for "while_" syntax:
 #define WHILE(x) while_([](){return (x);})
+
 /* Create an Event to be Triggered Once for Every Time the Given Condition
 Changes from false to true: */
 #define WHEN(x) while_([](){ \
@@ -87,29 +90,6 @@ public:
     return e;
   } // #while_
 
-  /*
-   * Create an Event to be Triggered Once for Every Time the Given Condition
-   * Changes from false to true.
-   */
-  Event* when( bool (*condition)() ){
-    Event* e = new Event([](){
-      static bool last_check = false; // State on the Previous Check
-      static bool (*cond)() = condition;
-
-      bool current = cond();
-
-      if(current && !last_check){
-        evnt->trigger();
-        last_check = current;
-        return 1;
-      }
-
-      last_check = current;
-      return 0;
-    });
-    this->events.push_back(e);
-    return e;
-  } // #while_
 
   /* Create an Event that will be Triggered every %interval% Milliseconds */
   Event* every(const unsigned long interval){

@@ -3,6 +3,8 @@
 
 float dist;
 
+Schedule* schedule = new Schedule();
+
 void setup(){
   schedule->EVERY(10)->do_(update_sonar);
   schedule->WHEN(dist < 10)->do_(backup);

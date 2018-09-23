@@ -37,8 +37,7 @@ can't be converted to function pointers. */
 #define IN(x) in_(x)
 
 /*
- * Basic Event Class which Triggers if its EventCondition is True When
- * #tryTrigger is Called.
+ * Basic Event Class which Triggers only when Called Directly.
  */
 class Event{
 public:
@@ -50,7 +49,32 @@ public:
 
   virtual ~Event(){} // Destructor
 
-  virtual bool tryTrigger() = 0;
+  /*
+   * Request this Event to Execute ASAP.
+   * NOTE: Calls happen in addition to any event-specific timings or conditions. */
+  void call(){
+    this->calledButNotRun = true;
+  } // #call
+
+  /*
+   * Executes this Event if it Should Execute either Because it's been Called or
+   * Should Self-Trigger.
+   * Returns Whether the Event was Executed.
+   */
+  bool tryExecute(){
+    if(this->shouldTrigger() || this->calledButNotRun){ // Call #shouldTrigger first
+      this->execute();
+      this->calledButNotRun = false;
+      return 1;
+    }
+    
+    return 0;
+  } // #tryExecute
+
+  /* Test if this Event Should Self-Trigger*/
+  virtual bool shouldTrigger(){
+    return 0; // Basic Events only Trigger when Explicitly Called
+  } // #shouldTrigger
 
   // Add the Given Function to the %registry% to be Executed Every Time the Event is Triggered
   void signup(RegisteredFunction fcn){
@@ -60,24 +84,25 @@ public:
   // Alias for Signing Up for the Event
   void do_(RegisteredFunction fcn){ signup(fcn); }
 
-  // Call All Functions Registered to this Event
-  void trigger(){
-    static bool ran = false; // Whether this function has been run before.
-    if(!ran || !this->runs_once){
+  // Calls All Functions Registered to this Event
+  void execute(){
+    if(!this->ran || !this->runs_once){
     // Do this ^ check instead of deleting self b/c pointer might be accessed later if in list.
       for(std::vector<RegisteredFunction*>::size_type i = 0; i != this->registry.size(); i++) {
         this->registry[i]();
       }
-      ran = true;
+      this->ran = true;
     }
-  } // #trigger
+  } // #execute
 
 protected:
-    Event(bool ro) : runs_once{ro} {};
-    std::vector<RegisteredFunction> registry;
+  Event(bool ro) : runs_once{ro} {};
+  std::vector<RegisteredFunction> registry;
+  bool ran = false; // Whether this function has been run before (ever).
+  bool calledButNotRun = false; // Whether this Event has been Called Recently but Not Yet Executed
 };
 
-/* Event which Triggers Anytime #tryTrigger is called and its condition is True*/
+/* Event which Triggers Anytime #shouldTrigger is called and its condition is True*/
 class ConditionalEvent : public Event{
 public:
   typedef bool (*EventCondition) ();
@@ -94,36 +119,36 @@ public:
    * Triggers this Event if its %condition% Allows It.
    * Returns Whether the Event was Triggered.
    */
-  virtual bool tryTrigger(){
+  virtual bool shouldTrigger(){
     if(this->condition()){
-      this->trigger();
       return 1;
     }
     return 0;
-  } // #tryTrigger
+  } // #shouldTrigger
 };
 
 /*
- * Event Class which Triggers when its EventCondition is True When #tryTrigger
+ * Event Class which Triggers when its EventCondition is True When #shouldTrigger
  * is Called and was False the Last time it was Called.
  */
 class TransitionEvent : public ConditionalEvent{
 public:
   TransitionEvent(EventCondition t) : ConditionalEvent(t) {}; // Constructor
 
-  bool tryTrigger(){
-    static bool last_state = false;
+  bool shouldTrigger(){
     bool curr_state = this->condition();
 
-    if(curr_state && !last_state){
-      this->trigger();
-      last_state = curr_state;
+    if(curr_state && !this->last_state){
+      this->last_state = curr_state;
       return 1;
     }
 
-    last_state = curr_state;
+    this->last_state = curr_state;
     return 0;
-  } // #tryTrigger
+  } // #shouldTrigger
+
+protected:
+  bool last_state = false;
 };
 
 /*
@@ -134,7 +159,10 @@ class TimedEvent : public Event{
 public:
   unsigned long interval; // Interval between Executions
 
-  TimedEvent(unsigned long i) : interval{i} {}; // Constructor
+  TimedEvent(unsigned long i) : interval{i} {
+    this->timer = i;
+    this->last_time = millis();
+  }; // Constructor
 
   virtual ~TimedEvent(){ } // Destructor
 
@@ -142,30 +170,31 @@ public:
    * Triggers this Event if its %condition% Allows It.
    * Returns Whether the Event was Triggered.
    */
-   virtual bool tryTrigger(){
-    static unsigned long last_time = millis(); // Grab base time on first call
-    static long timer = this->interval;
-
+   virtual bool shouldTrigger(){
     unsigned long now = millis();
-    timer -= now - last_time;
-    last_time = now;
+    this->timer -= now - last_time;
+    this->last_time = now;
 
-    if(timer < 0){
-      timer += this->interval; // Keeps execution freq. as close to interval as possible
-      this->trigger();
+    if(this->timer < 0){
+      this->timer += this->interval; // Keeps execution freq. as close to interval as possible
       return 1;
     }
 
     return 0;
-  } // #tryTrigger
+  } // #shouldTrigger
 
 protected:
-  TimedEvent(bool runs_once_, unsigned long i) : Event(runs_once_), interval{i} {};
+  unsigned long last_time;
+  long timer;
+  TimedEvent(bool runs_once_, unsigned long i) : Event(runs_once_), interval{i} {
+    this->timer = i;
+    this->last_time = millis();
+  };
 };
 
 class SingleTimedEvent : public TimedEvent{
 public:
-  SingleTimedEvent(unsigned long i) : TimedEvent(i) {}; // Constructor
+  SingleTimedEvent(unsigned long i) : TimedEvent(true, i) {}; // Constructor
 };
 
 class Schedule{
@@ -205,7 +234,7 @@ public:
   void loop(){
     std::vector<Event*>::iterator it;
     for(it = this->events.begin(); it != this->events.end();) {
-      if( (*it)->tryTrigger() && (*it)->runs_once ){
+      if( (*it)->tryExecute() && (*it)->runs_once ){
         // Delete Event if it's been Executed and Only Runs Once
         delete* it;
         it = this->events.erase(it);

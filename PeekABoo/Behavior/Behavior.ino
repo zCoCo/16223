@@ -46,20 +46,22 @@
 
 void wakeUp(){
   // Intentionally blocking sequence so that robot does not respond while groggy.
-  eyeLevel(100); // Eyes Start Closed
+  eyeLids(100); // Eyes Start Closed
   delay(500);
   blink(750); // Slow First Blink
+  //delay(350);
+  //blink(); // Blink Again Quicky
   delay(350);
-  blink(); // Blink Again Quicky
-  delay(350);
-  eyeLevel(30); // Ready to See the World
+  moveEyeLidsTo(50); // Ready to See the World
 } // #wakeUp
 
 void setup(){
   initHAL();
+  moveStalks(0);
+  moveHands(0);
 
   wakeUp();
-  delay(1000);
+  delay(500);
   chuckle();
 
   //sch->EVERY(500)->DO(blink()); // Will call #blink every 500ms

@@ -1,16 +1,32 @@
-#include <vector>
-#include <time.h>
-unsigned long millis(){ return 1000 * clock() / CLOCKS_PER_SEC; }
-/* Example Usage:
+/* Schedule.h
+ * Intuitive Scheduling Utility that Allows for Complex Time and Condition Based
+ * Behaviors to be Constructed out of Simple, Legible Event-Based Primitives.
+ * Author: Connor W. Colombo, 9/21/2018
+ * Version: 0.1.0
+ * License: MIT
+ */
+#ifndef SCHEDULE_H
+#define SCHEDULE_H
+/* Example Usage (only call these once, likely in setup):
+ ** avoid calling variables directly from inside these functions unless they are global variables **
+
 void setup(){
 // Basic Call:
-  schedule->EVERY(500)->DO(blink()); // Will call #blink every 500ms
-  schedule->IN(2500)->DO(doThisOnce()); // Will call #doThisOnce one time in 2.5s
-  schedule->WHILE(dist < 10)->DO(swing_arms()); // Will call #swing_arms as often as possible so long as dist < 10.
-  schedule->WHEN(dist < 10)->DO(backup()); // Will call #backup every time dist goes from >=10 to <10.
+ sch->EVERY(500)->DO(blink()); // Will call #blink every 500ms
+ sch->EVERY_WHILE(750, dist < 10)->DO(togglePeek()); // Will peek / unpeek every 750ms while dist is < 10cm
 
-  schedule->EVERY(250)->do_(blink); // if you're just calling a void function with no arguments, it's more effective to just use the lowercase #do_
-  schedule->EVERY(100)->DO(x++); // x or other variables accessed must be a global variable
+ sch->IN(2500)->DO(doThisOnce()); // Will call #doThisOnce one time in 2.5s
+
+ sch->NOW->DO(sortOfUrgent()); // Will call #sortOfUrgent as soon as possible without blocking other events (useful in comm. interrupts for longer behavior)
+
+ sch->WHILE(dist < 10)->DO(swing_arms()); // Will call #swing_arms as often as possible as long as dist < 10.
+ sch->WHEN(dist > 10)->DO(someOtherThing()); // Will call #someOtherThing every time dist goes from <=10 to >10.
+ sch->WHEN(touched())->DO(uncoverEyes()); // Will uncover eyes when touched goes from false to true (so, when touched)
+
+ // Other more efficient notation for simple function calls:
+ sch->EVERY(250)->do_(blink); // if you're just calling a void function with no arguments, it's more effective to just use the lowercase #do_
+ // Note:
+ sch->EVERY(100)->DO(x++); // x or other variables accessed directly must be a global variables (not local scope)
 
 // Or Save Events to be Registered to Later:
   Event* FREQ_100Hz = schedule->EVERY(10);
@@ -33,8 +49,12 @@ can't be converted to function pointers. */
 #define WHEN(x) when([](){return (x);})
 // Syntax to Normalize All-Caps Syntax used by Conditionals:
 #define EVERY(x) every(x)
+// More Legible Shorthand for "everyWhile" syntax:
+#define EVERY_WHILE(x,y) everyWhile(x, [](){return (y);})
 // Syntax to Normalize All-Caps Syntax used by Conditionals:
 #define IN(x) in_(x)
+// Shorthand Syntax for Performing a Task as Soon as Possible:
+#define NOW in_(0)
 
 /*
  * Basic Event Class which Triggers only when Called Directly.
@@ -67,7 +87,7 @@ public:
       this->calledButNotRun = false;
       return 1;
     }
-    
+
     return 0;
   } // #tryExecute
 
@@ -164,24 +184,24 @@ public:
     this->last_time = millis();
   }; // Constructor
 
-  virtual ~TimedEvent(){ } // Destructor
+  ~TimedEvent(){ } // Destructor
 
   /*
    * Triggers this Event if its %condition% Allows It.
    * Returns Whether the Event was Triggered.
    */
-   virtual bool shouldTrigger(){
-    unsigned long now = millis();
-    this->timer -= now - last_time;
-    this->last_time = now;
+   bool shouldTrigger(){
+      unsigned long now = millis();
+      this->timer -= now - last_time;
+      this->last_time = now;
 
-    if(this->timer < 0){
-      this->timer += this->interval; // Keeps execution freq. as close to interval as possible
-      return 1;
-    }
+      if(this->timer < 0){
+        this->timer += this->interval; // Keeps execution freq. as close to interval as possible
+        return 1;
+      }
 
-    return 0;
-  } // #shouldTrigger
+      return 0;
+    }  // #shouldTrigger
 
 protected:
   unsigned long last_time;
@@ -192,9 +212,53 @@ protected:
   };
 };
 
+/* An Event which Triggers Once After a Set Period of Time */
 class SingleTimedEvent : public TimedEvent{
 public:
   SingleTimedEvent(unsigned long i) : TimedEvent(true, i) {}; // Constructor
+};
+
+/* An Event which Triggers at a Certain Frequency so Long as a Given Condition is True */
+class ConditionalTimedEvent : public TimedEvent{
+public:
+  typedef bool (*EventCondition) ();
+
+  EventCondition condition; // Function that Triggers the Event if it's Ready to be Triggered
+
+  ConditionalTimedEvent(unsigned long i, EventCondition t) : TimedEvent(i), condition(t){};
+
+  virtual ~ConditionalTimedEvent(){
+    delete& condition;
+  } // Destructor
+
+  /*
+   * Triggers this Event if its %condition% Allows It.
+   * Returns Whether the Event was Triggered.
+   */
+   bool shouldTrigger(){
+      unsigned long now = millis();
+      this->timer -= now - last_time;
+      this->last_time = now;
+
+      bool curr_state = this->condition();
+
+      // Everytime Condition Becomes True, Restart Timer
+      if(curr_state && !this->last_state){
+        timer = this->interval;
+      }
+
+      this->last_state = curr_state;
+
+      if(curr_state && this->timer < 0){
+        this->timer += this->interval; // Keeps execution freq. as close to interval as possible
+        return 1;
+      }
+
+      return 0;
+    }  // #shouldTrigger
+
+protected:
+  bool last_state = false;
 };
 
 class Schedule{
@@ -230,6 +294,17 @@ public:
     return e;
   } // #in_
 
+  /*
+   * Create an Event that will be Triggered Every %interval% Milliseconds While
+   * a Given Condition is True, starting %interval% Milliseconds AFTER the
+   * Condition Becomes True.
+   */
+  ConditionalTimedEvent* everyWhile(const unsigned long interval, bool (*condition)()){
+    ConditionalTimedEvent* e = new ConditionalTimedEvent(interval, condition);
+    this->events.push_back(e);
+    return e;
+  } // #everyWhile
+
   // Function to be Executed on Every Main Loop (as fast as possible)
   void loop(){
     std::vector<Event*>::iterator it;
@@ -245,3 +320,4 @@ public:
   } // #loop
 
 }; // Class: Schedule
+#endif // SCHEDULE_H

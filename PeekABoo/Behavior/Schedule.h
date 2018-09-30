@@ -2,9 +2,14 @@
  * Intuitive Scheduling Utility that Allows for Complex Time and Condition Based
  * Behaviors to be Constructed out of Simple, Legible Event-Based Primitives.
  * (admittedly, this has a bit of a ways to go in terms of memory efficiency -
- * badly needs a ring buffer.)
+ * badly needs a ring buffer. (especially bad now that state persistence has
+ * been added))
+ * KNOWN BUGS / PROBLEMS:
+ *  - Semi-Required memory leak on the %done% state of Actions. Need to have
+ * some way of determining whether / how long other functions will need access to
+ * this information after the Action has been deleted.
  * Author: Connor W. Colombo, 9/21/2018
- * Version: 0.1.0
+ * Version: 0.1.2
  * License: MIT
  */
 #ifndef SCHEDULE_H
@@ -45,6 +50,13 @@ void setup(){
 can't be converted to function pointers. */
 // More Legible Shorthand for "do_" syntax:
 #define DO(x) do_([](){x;})
+/* Shorthand for Calling a Function which Takes a Long Time to Complete after it
+Returns (has its own event calls) and returns a pointer to a boolean which
+indicates when it is done. */
+#define DO_LONG(x) \
+do_(new NestingAction([](Action* action){ \
+  action->done = x; \
+}));
 // More Legible Shorthand for "do_" syntax:
 #define SIGNUP(x) signup([](){x;})
 // More Legible Shorthand for "while_" syntax:
@@ -61,35 +73,81 @@ can't be converted to function pointers. */
 #define NOW in_(0)
 
 /*
- * Container for Information about the State of an Event which Allows its
- * Information to be Altered by Nested Events so that Complex Networks of
- * Dependencies for Whether an Event is "done" can be Built if Desired. The
- * primary reason for this class is so that event's whose registed functions
- * establish other events which won't execute until later can ...*/
-struct EventState{
-  bool* done; // Whether the event's function and all of its nested actions have completed at least once
-  EventState() : done(new bool(false)) {}; //ctor
-  ~EventState(){
-    delete done;
-  } // dtor
-};
-
-/*
- * An Action (ie function) to be Performed by being Called when an Event
- * Triggers and Must Receive some Piece(s) of Stored Data of type T to Execute.
+ * Container for Action which are called in events and their respective metadata.
  */
- class DataActionType{ // Abstract Container for Use in Arrays of Pointers
+ class Action{ // Abstract Container for Use in Arrays of Pointers
  public:
-   virtual ~DataActionType() = 0;
+   bool* done;
+
+   virtual ~Action(){
+     //delete done; // <- Leave the done state variable behind
+     //done = nullptr;
+   } // dtor
+
    virtual void call() = 0;
- };
+
+   /* Tells Whether this Action and its Required Actions are Complete. Returns
+   the dereferrenced state of member %done% */
+   bool isDone(){
+     return *(this->done);
+   } // #isDone
+ }; // class Action
+ /*
+  * Most basic form of an Action which takes a void-void function which has no
+  * dependencies and thus is considered to be done executing once the function
+  * returns (ie. doesn't generate any Events).
+  */
+ class BasicAction : public Action{
+ public:
+   // Type of Function to be Called which Consumes the Stored Data:
+   typedef void (*function) ();
+
+   BasicAction(function f) : oncall{f} {};
+   virtual ~BasicAction(){
+     delete& oncall;
+   }
+
+   void call(){
+     oncall();
+     *(this->done) = true;
+   }
+ private:
+   // Function to be Executed when this Action is Called:
+   function oncall;
+ }; // class BasicAction
+ /*
+  * Most basic form of an Action which takes a void-Action* function which has
+  * dependencies / triggers other events and is expected to set this Action's
+  * done value to true once all of its sub-functions are complete.
+  */
+ class NestingAction : public Action{
+ public:
+   // Type of Function to be Called which Consumes the Stored Data:
+   typedef void (*function) (Action*);
+
+   NestingAction(function f) : oncall{f} {};
+   virtual ~NestingAction(){
+     delete& oncall;
+   }
+
+   void call(){
+     oncall(this);
+   }
+ private:
+   // Function to be Executed when this Action is Called:
+   function oncall;
+ }; // class NestingAction
+ /*
+  * An Action (ie function) to be Performed by being Called when an Event
+  * Triggers and Must Receive some Piece(s) of Stored Data of type T to Execute.
+  * The contained function is considered to have no dependencies and thus be
+  * done executing once the function returns (ie. doesn't generate any Events).
+  */
  template <typename T>
- class DataAction : public DataActionType{
+ class DataAction : public Action{
   public:
     // Type of Function to be Called which Consumes the Stored Data:
     typedef void (*function) (T);
-    // Function to be Executed when this Action is Called:
-    function oncall;
     // Stored Data to be Given to the Function:
     T data;
 
@@ -101,29 +159,66 @@ struct EventState{
     // Calls this Action by Passing the Stored Data to #oncall and Calling It.
     void call(){
       oncall(data);
+      *(this->done) = true;
     }
+  private:
+    // Function to be Executed when this Action is Called:
+    function oncall;
  }; // Class: DataAction
+ /*
+  * An Action (ie function) to be Performed by being Called when an Event
+  * Triggers and Must Receive some Piece(s) of Stored Data of type T to Execute.
+  * The contained function has dependencies / triggers other events and is
+  * expected to set this Action's done value to true once all of its s
+  * sub-functions are complete.
+  */
+ template <typename T>
+ class NestingDataAction : public Action{
+  public:
+    // Type of Function to be Called which Consumes the Stored Data:
+    typedef void (*function) (T, Action*);
+    // Stored Data to be Given to the Function:
+    T data;
+
+    NestingDataAction(function f, T d) : oncall{f}, data{d} {};
+    virtual ~NestingDataAction(){
+      delete& oncall;
+    }
+
+    // Calls this Action by Passing the Stored Data to #oncall and Calling It.
+    void call(){
+      oncall(this);
+    }
+  private:
+    // Function to be Executed when this Action is Called:
+    function oncall;
+ }; // Class: NestingDataAction
 
 /*
  * Basic Event Class which Triggers only when Called Directly.
  */
 class Event{
 public:
+  // Basic void-void function which can signup for the event:
   typedef void (*RegisteredFunction) ();
-  // Special Type of Registered Function which takes a bool* which it sets to true once all its actions have been performed:
-  typedef void (*LayeredRegisteredFunction) (bool*);
-
-  EventState* state = new EventState(); // Contains Information about the Event's Executio State
-
   const bool runs_once; // Indentifies whether this event only happens once.
 
   Event() : runs_once{false} {};
 
-  virtual ~Event(){} // Destructor
+  virtual ~Event(){
+    for(
+      std::vector<Action*>::iterator it = this->registry.begin();
+      it != this->registry.end();
+      ++it
+    ){
+      delete (*it);
+    }
+    this->registry.clear();
+  } // dtor
 
   /*
    * Request this Event to Execute ASAP.
-   * NOTE: Calls happen in addition to any event-specific timings or conditions. */
+   * NOTE: Calls happen IN ADDITION to any event-specific timings or conditions. */
   void call(){
     this->calledButNotRun = true;
   } // #call
@@ -148,37 +243,31 @@ public:
     return 0; // Basic Events only Trigger when Explicitly Called
   } // #shouldTrigger
 
-  /* Add the Given Function to the %registry% to be Executed Every Time the
-  Event is Triggered. Returns a bool* whose deref value becomes true when
-  then event has been called at least once (is done executing) */
+  /* Add the Given Function to the %registry% as a BasicAction to be Executed
+  Every Time the Event is Triggered. Returns the done variable of the Action created. */
   bool* signup(RegisteredFunction fcn){
-    this->registry.push_back(fcn);
-    return &this->ran;
+    Action* a = new BasicAction(fcn);
+    this->registry.push_back(a);
+    return a->done;
   } // #signup
-  bool* signup(LayeredRegisteredFunction fcn){
-    bool* b = new bool(false);
-    this->registry.push_back(fcn);
-    return &this->ran;
-  } // #signup
-  bool* signup(DataActionType* da){
-    this->dataActionRegistry.push_back(da);
-    return &this->ran;
+
+  /* Add the Given Action to the %registry% to be Executed Every Time the Event
+  is Triggered. Returns the done variable of the Action. */
+  bool* signup(Action* a){
+    this->registry.push_back(a);
+    return a->done;
   } // #signup
 
   // Alias for Signing Up for the Event
   bool* do_(RegisteredFunction fcn){ return signup(fcn); }
-  bool* do_(LayeredRegisteredFunction fcn){ return signup(fcn); }
-  bool* do_(DataActionType* da){ return signup(da); }
+  bool* do_(Action* a){ return signup(a); }
 
   // Calls All Functions Registered to this Event
   void execute(){
     if(!this->ran || !this->runs_once){
     // Do this ^ check instead of deleting self b/c pointer might be accessed later if in list.
-      for(std::vector<RegisteredFunction*>::size_type i = 0; i != this->registry.size(); i++) {
-        this->registry[i]();
-      }
-      for(std::vector<DataActionType*>::size_type i = 0; i != this->dataActionRegistry.size(); i++) {
-        this->dataActionRegistry[i]->call();
+      for(std::vector<Action*>::size_type i = 0; i != this->registry.size(); i++) {
+        this->registry[i]->call();
       }
       this->ran = true;
     }
@@ -186,9 +275,7 @@ public:
 
 protected:
   Event(bool ro) : runs_once{ro} {};
-  std::vector<RegisteredFunction> registry;
-  std::vector<LayeredRegisteredFunction> layeredRegistry;
-  std::vector<DataActionType*> dataActionRegistry;
+  std::vector<Action*> registry;
   bool ran = false; // Whether this function has been run before (ever).
   bool calledButNotRun = false; // Whether this Event has been Called Recently but Not Yet Executed
 }; // Class: Event

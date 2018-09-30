@@ -5,6 +5,9 @@
 #include <Adafruit_SSD1306.h>
 #include <Servo.h>
 #include <HCSR04.h>
+#include "Schedule.h"
+
+Schedule* sch = new Schedule();
 
 // Ultrasound Sensing Pins:
 #define P_ECHO 11
@@ -54,6 +57,11 @@ void moveHandLeft(int percent);
 // Moves right hand to %percent% of the way from the bottom of its swing where 0% is its lowest position and 100% is its highest
 void moveHandRight(int percent);
 
+// Moves both hands over the eyes.
+void coverEyes();
+// Uncovers its eyes.
+void uncoverEyes();
+
 // SENSING PRIMITIVES:
 // Returns the distance to the nearest object in front of the robot based on ultrasound.
 float dist();
@@ -89,17 +97,18 @@ void blink(int t){
 
   int i;
   for(i=initState; i<100; i+=step){ // Close Eyes First
-    eyeLids(i);
-    delay(waitTime);
+    sch->IN(i*waitTime)->do_(new DataAction<int>([](int data){
+      eyeLids(data);
+    }, i));
   }
   for(i=100; i>0; i-=step){ // Then Open
-    eyeLids(i);
-    delay(waitTime);
-  }
+    sch->IN(i*waitTime)->do_(new DataAction<int>([](int data){
+      eyeLids(data);
+    }, i+initState));
+  }/*
   for(i=0; i<=initState; i+=step){ // Return to Initial State
-    eyeLids(i);
-    delay(waitTime);
-  }
+    sch->IN((i+initState+100) * waitTime)->DO(eyeLids(i););
+  }*/
 } // #blink
 
 void invertBlink(){
@@ -110,14 +119,18 @@ void invertBlink(){
 
 // Chuckles slightly by inverting the eyes three times and moving eye stalks up and down.
 void chuckle(){
-  invertBlink();
-  moveStalks(80);
-  delay(250);
-  invertBlink();
-  moveStalks(20);
-  delay(250);
-  invertBlink();
-  moveStalks(100);
+  sch->NOW->do_([](){
+    invertBlink();
+    moveStalks(80);
+  });
+  sch->IN(250)->do_([](){
+    invertBlink();
+    moveStalks(20);
+  });
+  sch->IN(500)->do_([](){
+    invertBlink();
+    moveStalks(100);
+  });
 } // #chuckle
 
 // Opens/Close the Eyes by Drawing them at the Given Percent Closed where 0 is fully open and 1 is fully closed.
@@ -157,7 +170,7 @@ void moveEyeLidsTo(int targ_percent){
   static const int step = 10;
   char dir = abs(targ_percent-currentEyePercent)/(targ_percent-currentEyePercent);
   int curr_target = currentEyePercent;
-  while(currentEyePercent != targ_percent){
+  while(dir * (targ_percent-currentEyePercent) > 0){
     curr_target += dir*step;
     eyeLids(curr_target);
   }
@@ -165,12 +178,12 @@ void moveEyeLidsTo(int targ_percent){
 
 // Commands the Given Servo to the Given Percent of its Range from minAng to maxAng
 void commandServo(Servo S, int minAng, int maxAng, int percent){
-  S.write(minAng + (maxAng-minAng)*percent);
+  S.write(minAng + (maxAng-minAng) * constrain(percent,0,100) / 100.0);
 } // #commandServo
 // Moves left stalk to %percent% of the way from the bottom of its swing where 0% is its lowest position and 100% is its highest
-void moveStalkLeft(int percent){ commandServo(S_LEFT_STALK, 0, 70, percent); }
+void moveStalkLeft(int percent){ commandServo(S_LEFT_STALK, 90, 200, percent); }
 // Moves right stalk to %percent% of the way from the bottom of its swing where 0% is its lowest position and 100% is its highest
-void moveStalkRight(int percent){ commandServo(S_RIGHT_STALK, 180, 155, percent); }
+void moveStalkRight(int percent){ commandServo(S_RIGHT_STALK, 180, 100, percent); }
 // Moves stalks to %percent% of the way from the bottom of their swing where 0% is their lowest position and 100% is their highest
 void moveStalks(int percent){ moveStalkLeft(percent); moveStalkRight(percent); }
 
@@ -181,6 +194,26 @@ void moveHandRight(int percent){ commandServo(S_RIGHT_HAND, 180, 100, percent); 
 // Moves hands to %percent% of the way from the bottom of their swing where 0% is their lowest position and 100% is their highest
 void moveHands(int percent){ moveHandLeft(percent); moveHandRight(percent); }
 
+// Moves both hands over the eyes.
+void coverEyes(){
+  moveHands(100);
+} // #coverEyes
+// Uncovers its eyes.
+void uncoverEyes(){
+  moveHands(0);
+} // #uncoverEyes
+
+// Moves hands slightly out of the way of the eyes on first call, on second call it covers them up
+void togglePeek(){
+  static bool peeking = false;
+  if(!peeking){
+    moveHands(61);
+  } else{
+    moveHands(100);
+  }
+} // #togglePeek
+
+// Returns the distance to the nearest object in front of the robot based on ultrasound.
 float dist(){
   return sonar.measureDistanceCm();
 } // #dist

@@ -1,12 +1,16 @@
 /* Schedule.h
  * Intuitive Scheduling Utility that Allows for Complex Time and Condition Based
  * Behaviors to be Constructed out of Simple, Legible Event-Based Primitives.
+ * (admittedly, this has a bit of a ways to go in terms of memory efficiency -
+ * badly needs a ring buffer.)
  * Author: Connor W. Colombo, 9/21/2018
  * Version: 0.1.0
  * License: MIT
  */
 #ifndef SCHEDULE_H
 #define SCHEDULE_H
+#include <StandardCplusplus.h>
+#include <vector>
 /* Example Usage (only call these once, likely in setup):
  ** avoid calling variables directly from inside these functions unless they are global variables **
 
@@ -57,11 +61,59 @@ can't be converted to function pointers. */
 #define NOW in_(0)
 
 /*
+ * Container for Information about the State of an Event which Allows its
+ * Information to be Altered by Nested Events so that Complex Networks of
+ * Dependencies for Whether an Event is "done" can be Built if Desired. The
+ * primary reason for this class is so that event's whose registed functions
+ * establish other events which won't execute until later can ...*/
+struct EventState{
+  bool* done; // Whether the event's function and all of its nested actions have completed at least once
+  EventState() : done(new bool(false)) {}; //ctor
+  ~EventState(){
+    delete done;
+  } // dtor
+};
+
+/*
+ * An Action (ie function) to be Performed by being Called when an Event
+ * Triggers and Must Receive some Piece(s) of Stored Data of type T to Execute.
+ */
+ class DataActionType{ // Abstract Container for Use in Arrays of Pointers
+ public:
+   virtual ~DataActionType() = 0;
+   virtual void call() = 0;
+ };
+ template <typename T>
+ class DataAction : public DataActionType{
+  public:
+    // Type of Function to be Called which Consumes the Stored Data:
+    typedef void (*function) (T);
+    // Function to be Executed when this Action is Called:
+    function oncall;
+    // Stored Data to be Given to the Function:
+    T data;
+
+    DataAction(function f, T d) : oncall{f}, data{d} {};
+    virtual ~DataAction(){
+      delete& oncall;
+    }
+
+    // Calls this Action by Passing the Stored Data to #oncall and Calling It.
+    void call(){
+      oncall(data);
+    }
+ }; // Class: DataAction
+
+/*
  * Basic Event Class which Triggers only when Called Directly.
  */
 class Event{
 public:
   typedef void (*RegisteredFunction) ();
+  // Special Type of Registered Function which takes a bool* which it sets to true once all its actions have been performed:
+  typedef void (*LayeredRegisteredFunction) (bool*);
+
+  EventState* state = new EventState(); // Contains Information about the Event's Executio State
 
   const bool runs_once; // Indentifies whether this event only happens once.
 
@@ -96,13 +148,27 @@ public:
     return 0; // Basic Events only Trigger when Explicitly Called
   } // #shouldTrigger
 
-  // Add the Given Function to the %registry% to be Executed Every Time the Event is Triggered
-  void signup(RegisteredFunction fcn){
+  /* Add the Given Function to the %registry% to be Executed Every Time the
+  Event is Triggered. Returns a bool* whose deref value becomes true when
+  then event has been called at least once (is done executing) */
+  bool* signup(RegisteredFunction fcn){
     this->registry.push_back(fcn);
+    return &this->ran;
+  } // #signup
+  bool* signup(LayeredRegisteredFunction fcn){
+    bool* b = new bool(false);
+    this->registry.push_back(fcn);
+    return &this->ran;
+  } // #signup
+  bool* signup(DataActionType* da){
+    this->dataActionRegistry.push_back(da);
+    return &this->ran;
   } // #signup
 
   // Alias for Signing Up for the Event
-  void do_(RegisteredFunction fcn){ signup(fcn); }
+  bool* do_(RegisteredFunction fcn){ return signup(fcn); }
+  bool* do_(LayeredRegisteredFunction fcn){ return signup(fcn); }
+  bool* do_(DataActionType* da){ return signup(da); }
 
   // Calls All Functions Registered to this Event
   void execute(){
@@ -111,6 +177,9 @@ public:
       for(std::vector<RegisteredFunction*>::size_type i = 0; i != this->registry.size(); i++) {
         this->registry[i]();
       }
+      for(std::vector<DataActionType*>::size_type i = 0; i != this->dataActionRegistry.size(); i++) {
+        this->dataActionRegistry[i]->call();
+      }
       this->ran = true;
     }
   } // #execute
@@ -118,9 +187,11 @@ public:
 protected:
   Event(bool ro) : runs_once{ro} {};
   std::vector<RegisteredFunction> registry;
+  std::vector<LayeredRegisteredFunction> layeredRegistry;
+  std::vector<DataActionType*> dataActionRegistry;
   bool ran = false; // Whether this function has been run before (ever).
   bool calledButNotRun = false; // Whether this Event has been Called Recently but Not Yet Executed
-};
+}; // Class: Event
 
 /* Event which Triggers Anytime #shouldTrigger is called and its condition is True*/
 class ConditionalEvent : public Event{

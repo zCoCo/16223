@@ -1,7 +1,5 @@
-// Requirements: ETL? (switch to list - issue with fixed-size vector?)
-//#include "Schedule.h"
+#include "Schedule.h"
 #include "HAL.h"
-//Schedule* sch = new Schedule();
 
 /* Functional Primitives:
  * NOTE: Left and Right Refer to the Viewer's Left and Right:
@@ -44,15 +42,18 @@
  sch->EVERY(100)->DO(x++); // x or other variables accessed must be a global variables
  */
 
+// STATE VARIABLES:
+struct Robot{
+  bool awake = false;
+} WallE;
+
 void wakeUp(){
-  // Intentionally blocking sequence so that robot does not respond while groggy.
   eyeLids(100); // Eyes Start Closed
-  delay(500);
-  blink(750); // Slow First Blink
-  //delay(350);
-  //blink(); // Blink Again Quicky
-  delay(350);
-  moveEyeLidsTo(50); // Ready to See the World
+  sch->IN(500)->do_([](){
+    blink(750);
+    bool* done = sch->IN(750+350)->DO(moveEyeLidsTo(35));
+    sch->WHEN(*done)->DO(WallE.awake = true;);
+  });
 } // #wakeUp
 
 void setup(){
@@ -64,9 +65,9 @@ void setup(){
   delay(500);
   chuckle();
 
-  //sch->EVERY(500)->DO(blink()); // Will call #blink every 500ms
+  //sch->EVERY(1500)->DO(Serial.print("Ping - "); Serial.println(millis()));
 } // #setup
 
 void loop(){
-  //sch->loop();
+  sch->loop();
 } // #loop

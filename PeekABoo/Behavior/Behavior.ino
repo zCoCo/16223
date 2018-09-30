@@ -42,22 +42,35 @@
  sch->EVERY(100)->DO(x++); // x or other variables accessed must be a global variables
  */
 
+ // STATE VARIABLES:
+ struct RobotType{
+   bool* awake = new bool(false);
+   bool* eyes_open = new bool(false);
+ } Robot;
+
 bool* wakeUp(){
   eyeLids(100); // Eyes Start Closed (call this before the scheduler turns on)
-  bool* blinkDone = sch->IN(500)->DO_LONG(blink(750));
-  bool* lidsOpen = sch
-    ->WHEN( *blinkDone )
-    ->DO_LONG( moveEyeLidsTo(35) );
-  return lidsOpen;
+  Robot.eyes_open = sch->IN(500)->DO_LONG(blink(750));
+  return sch
+    ->WHEN( *(Robot.eyes_open) )
+    ->DO([](){
+      moveEyeLidsTo(35);
+      *(Robot.awake) = true;
+    });
 } // #wakeUp
 
 void setup(){
+  Serial.begin(9600);
   initHAL();
   moveStalks(0);
   moveHands(0);
 
-  bool* awake = wakeUp();
-  sch->WHEN(*awake)->DO(chuckle());
+  wakeUp();
+  sch->WHEN( *(Robot.awake) )->DO(chuckle());
+
+  sch->WHEN( true )->DO(Serial.println(PSTR("Hi!")));
+  sch->WHEN( *(Robot.eyes_open) )->DO(Serial.print(PSTR("Waking Up - ")); Serial.println(millis()));
+  sch->WHEN( *(Robot.awake) )->DO(Serial.print(PSTR("I'm Awake - ")); Serial.println(millis()));
 
   //sch->EVERY(1500)->DO(Serial.print("Ping - "); Serial.println(millis()));
 } // #setup

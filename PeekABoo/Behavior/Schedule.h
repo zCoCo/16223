@@ -14,7 +14,7 @@
  */
 #ifndef SCHEDULE_H
 #define SCHEDULE_H
-#include <StandardCplusplus.h>
+//#include <StandardCplusplus.h>
 #include <vector>
 /* Example Usage (only call these once, likely in setup):
  ** avoid calling variables directly from inside these functions unless they are global variables **
@@ -77,7 +77,7 @@ do_(new NestingAction([](Action* action){ \
  */
  class Action{ // Abstract Container for Use in Arrays of Pointers
  public:
-   bool* done;
+   bool* done = new bool(false);
 
    virtual ~Action(){
      //delete done; // <- Leave the done state variable behind
@@ -103,9 +103,6 @@ do_(new NestingAction([](Action* action){ \
    typedef void (*function) ();
 
    BasicAction(function f) : oncall{f} {};
-   virtual ~BasicAction(){
-     delete& oncall;
-   }
 
    void call(){
      oncall();
@@ -126,9 +123,6 @@ do_(new NestingAction([](Action* action){ \
    typedef void (*function) (Action*);
 
    NestingAction(function f) : oncall{f} {};
-   virtual ~NestingAction(){
-     delete& oncall;
-   }
 
    void call(){
      oncall(this);
@@ -151,10 +145,7 @@ do_(new NestingAction([](Action* action){ \
     // Stored Data to be Given to the Function:
     T data;
 
-    DataAction(function f, T d) : oncall{f}, data{d} {};
-    virtual ~DataAction(){
-      delete& oncall;
-    }
+    DataAction(function f, T d) :  data{d}, oncall{f} {};
 
     // Calls this Action by Passing the Stored Data to #oncall and Calling It.
     void call(){
@@ -180,10 +171,7 @@ do_(new NestingAction([](Action* action){ \
     // Stored Data to be Given to the Function:
     T data;
 
-    NestingDataAction(function f, T d) : oncall{f}, data{d} {};
-    virtual ~NestingDataAction(){
-      delete& oncall;
-    }
+    NestingDataAction(function f, T d) : data{d}, oncall{f} {};
 
     // Calls this Action by Passing the Stored Data to #oncall and Calling It.
     void call(){

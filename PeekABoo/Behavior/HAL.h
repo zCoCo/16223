@@ -1,6 +1,7 @@
 #ifndef HAL_H
 #define HAL_H
 #include <Wire.h>
+//#include <CapacitiveSensor.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Servo.h>
@@ -10,15 +11,23 @@
 Schedule* sch = new Schedule();
 
 // Ultrasound Sensing Pins:
-#define P_ECHO 11
-#define P_TRIG 12
+#define P_ECHO 12
+#define P_TRIG 11
 UltraSonicDistanceSensor sonar(P_TRIG, P_ECHO);
+
+// Capacitive Sensor on Hands:
+#define CAP_PUSH A0
+#define CAP_SENS A1
+// Threshold Value for Detecting a Touch:
+#define CAP_THRESH 20
+//CapacitiveSensor capsens = CapacitiveSensor(CAP_PUSH,CAP_SENS);
+
 
 // Servo Motor Pins:
 #define P_LEFT_STALK 3
 #define P_RIGHT_STALK 10
 #define P_LEFT_HAND 6
-#define P_RIGHT_HAND 9
+#define P_RIGHT_HAND 4
 Servo S_LEFT_STALK, S_RIGHT_STALK, S_LEFT_HAND, S_RIGHT_HAND;
 
 #define OLED_RESET 4
@@ -28,12 +37,19 @@ Adafruit_SSD1306 display(OLED_RESET);
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
-// BODY VARIABLES:
+// STATE VARIABLES:
+struct RobotType{
+  ActionState awake = new_ActionState(false);
+  ActionState eyes_open = new_ActionState(false);
+  ActionState eyes_covered = new_ActionState(false);
+} Robot;
+
+// OPERATIONS VARIABLES:
 int currentEyePercent = 100;
 
 // EMOTION PRIMITIVES:
 // Chuckles slightly by inverting the eyes three times and moving eye stalks up and down.
-bool** chuckle();
+void chuckle();
 // Opens/Close the Eyes by Drawing them at the Given Percent Closed where 0 is fully open and 1 is fully closed
 void eyeLids(int);
 // Moves the Eye Lid Smoothly and Quickly to the Given Eye Level.
@@ -67,6 +83,8 @@ void uncoverEyes();
 float dist();
 // Returns Whether the Robot is Currently Being Touched on its Hands.
 bool touched();
+// Determines if a person is actually present (and not noise);
+bool personPresent();
 
 // HELPER FUNCTIONS:
 // Performs a Basic Blink/Squint by Inverting the Screen then Uninverting Shortly Later:
@@ -112,29 +130,18 @@ void blink(int t){
 
 bool** invertBlink(){
   display.invertDisplay(true);
-  return sch->IN(250)->DO(display.invertDisplay(false));
+  delay(250);
+  display.invertDisplay(false);
+  delay(250);
+  return new_ActionState(true); // Used to spawn an event - returns for compatibility
 } // #invertBlink
 
 // Chuckles slightly by inverting the eyes three times and moving eye stalks up and down.
-bool** chuckle(){
-  sch
-    ->NOW
-    ->do_([](){
-      invertBlink();
-      moveStalks(80);
-    });
-  sch
-    ->IN(250)
-    ->do_([](){
-      invertBlink();
-      moveStalks(20);
-    });
-  return sch
-    ->IN(500)
-    ->do_([](){
-      invertBlink();
-      moveStalks(100);
-    });
+void chuckle(){
+  invertBlink();
+  moveStalks(80);
+  invertBlink();
+  moveStalks(20);
 } // #chuckle
 
 // Opens/Close the Eyes by Drawing them at the Given Percent Closed where 0 is fully open and 1 is fully closed.
@@ -194,31 +201,56 @@ void moveStalks(int percent){ moveStalkLeft(percent); moveStalkRight(percent); }
 // Moves left hand to %percent% of the way from the bottom of its swing where 0% is its lowest position and 100% is its highest
 void moveHandLeft(int percent){ commandServo(S_LEFT_HAND, 0, 80, percent); }
 // Moves right hand to %percent% of the way from the bottom of its swing where 0% is its lowest position and 100% is its highest
-void moveHandRight(int percent){ commandServo(S_RIGHT_HAND, 180, 100, percent); }
+void moveHandRight(int percent){ commandServo(S_RIGHT_HAND, 180, 105, percent); }
 // Moves hands to %percent% of the way from the bottom of their swing where 0% is their lowest position and 100% is their highest
 void moveHands(int percent){ moveHandLeft(percent); moveHandRight(percent); }
 
 // Moves both hands over the eyes.
 void coverEyes(){
   moveHands(100);
+  **(Robot.eyes_covered) = true;
 } // #coverEyes
 // Uncovers its eyes.
 void uncoverEyes(){
   moveHands(0);
+  **(Robot.eyes_covered) = false;
 } // #uncoverEyes
 
 // Moves hands slightly out of the way of the eyes on first call, on second call it covers them up
 void togglePeek(){
   static bool peeking = false;
   if(!peeking){
-    moveHands(61);
+    moveHands(71);
   } else{
     moveHands(100);
   }
+  peeking = !peeking;
 } // #togglePeek
 
 // Returns the distance to the nearest object in front of the robot based on ultrasound.
 float dist(){
   return sonar.measureDistanceCm();
 } // #dist
+
+// Returns Whether the Robot is Currently Being Touched on its Hands.
+bool touched(){
+  return false; // TODO: Implement me.
+} // #touched
+
+// Determines if a person is actually present (and not noise)
+bool personPresent(){
+  static const unsigned int threshold = 25;
+  static unsigned int oldest_value = -1;
+  static unsigned long t_last_check = 0;
+  static unsigned int last_value = -1;
+
+  bool present = false;
+  if(millis() - t_last_check > 125){
+    t_last_check = millis();
+    present = dist() < threshold && last_value < threshold && oldest_value < threshold;
+    oldest_value = last_value;
+    last_value = dist();
+  }
+  return present;
+}
 #endif // HAL_H

@@ -42,51 +42,64 @@
  sch->EVERY(100)->DO(x++); // x or other variables accessed must be a global variables
  */
 
- // STATE VARIABLES:
- struct RobotType{
-   ActionState awake = new_ActionState(false);
-   ActionState eyes_open = new_ActionState(false);
- } Robot;
+#define RESTING_EYE_LEVEL 37
 
-bool** wakeUp(){
-  eyeLids(100); // Eyes Start Closed (call this before the scheduler turns on)
-  //blink(750);
-  Robot.eyes_open = sch
-    ->NOW
-    ->do_([](){
-      blink(750);
-      **(Robot.eyes_open) = true;
-    });
-  return sch
-    ->WHEN( **(Robot.eyes_open) )
-    ->do_([](){
-      moveEyeLidsTo(35);
-      **(Robot.awake) = true;
-    });
+void wakeUp(){
+  blink(750);
+  **(Robot.eyes_open) = true;
+  moveEyeLidsTo(RESTING_EYE_LEVEL);
+  moveStalks(100);
+  **(Robot.awake) = true;
 } // #wakeUp
 
 void setup(){
   Serial.begin(9600);
-  Serial.print("Initializing");
 
   initHAL();
   moveStalks(0);
   moveHands(0);
+  eyeLids(100); // Eyes Start Closed (call this before the scheduler turns on)
 
-  wakeUp();
-  Serial.print(" .");
-  sch->WHEN( **(Robot.awake) )->DO(chuckle());
-  Serial.print(" .");
+  sch->WHEN(!**(Robot.awake) && personPresent())->do_(wakeUp);
 
-  Serial.print(" .");
-  sch->WHEN( **(Robot.eyes_open) )->DO(Serial.print("Waking Up - "); Serial.println(millis()));
-  Serial.print(" .");
-  sch->WHEN( **(Robot.awake) )->DO(Serial.print("I'm Awake - "); Serial.println(millis()));
-  Serial.println(" .");
+  sch
+    ->WHEN( **(Robot.awake) )
+    ->do_([](){
+      Serial.println("I'm Awake.");
+      chuckle();
+      moveEyeLidsTo(RESTING_EYE_LEVEL);
+      sch->IN(1200)->do_([](){
+        coverEyes();
+        moveStalks(0);
+      });
+    });
 
-  sch->WHEN( true )->DO(Serial.println("Hi!")); // Make sure this is the last event in setup
-  Serial.println("Initialized.");
-  //sch->EVERY(1500)->DO(Serial.print("Ping - "); Serial.println(millis()));
+  sch->EVERY_WHILE( 1500, **(Robot.eyes_covered) )->do_(togglePeek);
+
+  sch
+    ->WHEN( **(Robot.eyes_covered) && personPresent() )
+    ->do_([](){
+      uncoverEyes();
+      chuckle();
+      chuckle();
+      moveEyeLidsTo(RESTING_EYE_LEVEL);
+      moveStalks(100);
+    });
+
+  sch
+    ->WHEN(touched())
+    ->do_([](){
+      coverEyes();
+      delay(500);
+      moveStalks(0);
+    });
+
+  //sch->WHEN( **(Robot.eyes_open) )->DO(Serial.print("Waking Up - "); Serial.println(millis()));
+  //sch->WHEN( **(Robot.awake) )->DO(Serial.print("I'm Awake - "); Serial.println(millis()));
+
+  //sch->IN(2750)->DO( sch->EVERY(1500)->DO(moveStalks(100)) );
+
+  //sch->WHEN( true )->DO(Serial.println("Initialized.")); // Make sure this is the last event in setup
 } // #setup
 
 void loop(){

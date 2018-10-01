@@ -1,4 +1,4 @@
-#ifdef _CFCT_ // Compiling for C Testing
+#ifdef _CFCT_ // Compiling for g++ Testing (keeps avr-gcc from bugging about this file)
 #include <iostream>
 #include <time.h>
 unsigned long millis(){ return 1000 * clock() / CLOCKS_PER_SEC; }

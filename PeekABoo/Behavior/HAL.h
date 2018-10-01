@@ -33,15 +33,15 @@ int currentEyePercent = 100;
 
 // EMOTION PRIMITIVES:
 // Chuckles slightly by inverting the eyes three times and moving eye stalks up and down.
-bool* chuckle();
+bool** chuckle();
 // Opens/Close the Eyes by Drawing them at the Given Percent Closed where 0 is fully open and 1 is fully closed
 void eyeLids(int);
 // Moves the Eye Lid Smoothly and Quickly to the Given Eye Level.
 void moveEyeLidsTo(int);
 // Blinks Both Eyes by Lowering and Raising the Eye Level (Lids) Quickly. Returns Eye Lids to their initial state.
-bool* blink();
+void blink();
 // Blinks Both Eyes by Lowering and Raising the Eye Level (Lids) taking the Given Time to Complete. Returns Eye Lids to their initial state.
-bool* blink(int);
+void blink(int);
 
 // MOTION PRIMITIVES:
 // Moves stalks to %percent% of the way from the bottom of their swing where 0% is their lowest position and 100% is their highest
@@ -70,7 +70,7 @@ bool touched();
 
 // HELPER FUNCTIONS:
 // Performs a Basic Blink/Squint by Inverting the Screen then Uninverting Shortly Later:
-bool* invertBlink();
+bool** invertBlink();
 // Commands the Given Servo to the Given Percent of its Range from minAng to maxAng
 void commandServo(Servo, int, int, int);
 
@@ -88,44 +88,38 @@ void initHAL(){
 } // #initHAL
 
 // Blinks Both Eyes by Lowering and Raising the Eye Level (Lids) Quickly. Returns Eye Lids to their initial state.
-bool* blink(){ return blink(0); }
+void blink(){ blink(0); }
 // Blinks Both Eyes by Lowering and Raising the Eye Level (Lids) taking the Given Time to Complete. Returns Eye Lids to their initial state.
-bool* blink(int t){
+void blink(int t){
   static const char step = 5;
   int initState = currentEyePercent;
   int waitTime = step * t / 200;
 
   int i;
   for(i=initState; i<100; i+=step){ // Close Eyes First
-    sch->IN(i*waitTime)->do_(new DataAction<int>([](int data){
-      eyeLids(data);
-    }, i));
+    delay(waitTime);
+    eyeLids(i);
   }
   for(i=100; i>0; i-=step){ // Then Open
-    sch
-      ->IN((i+initState)*waitTime)
-      ->do_(new DataAction<int>([](int data){ eyeLids(data); }, i));
+    delay(waitTime);
+    eyeLids(i);
   }
-  for(i=0; i<initState; i+=step){ // Return to Initial State
-    sch
-      ->IN((i+initState+100)*waitTime)
-      ->do_(new DataAction<int>([](int data){ eyeLids(data); }, i));
+  for(i=0; i<=initState; i+=step){ // Return to Initial State
+    delay(waitTime);
+    eyeLids(i);
   }
-  return sch
-    ->IN((2*initState+100)*waitTime)
-    ->do_(new DataAction<int>([](int data){ eyeLids(data); }, i));
 } // #blink
 
-bool* invertBlink(){
+bool** invertBlink(){
   display.invertDisplay(true);
   return sch->IN(250)->DO(display.invertDisplay(false));
 } // #invertBlink
 
 // Chuckles slightly by inverting the eyes three times and moving eye stalks up and down.
-bool* chuckle(){
+bool** chuckle(){
   sch
     ->NOW
-    ->DO([](){
+    ->do_([](){
       invertBlink();
       moveStalks(80);
     });

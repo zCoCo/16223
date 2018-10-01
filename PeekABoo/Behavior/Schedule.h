@@ -16,7 +16,7 @@
  */
 #ifndef SCHEDULE_H
 #define SCHEDULE_H
-//#include <StandardCplusplus.h>
+#include <StandardCplusplus.h>
 #include <vector>
 /* Example Usage (only call these once, likely in setup):
  ** avoid calling variables directly from inside these functions unless they are global variables **
@@ -81,6 +81,9 @@ action->done = x; \
 #define IN(x) in_(x)
 // Shorthand Syntax for Performing a Task as Soon as Possible:
 #define NOW in_(0)
+
+typedef bool** ActionState;
+#define new_ActionState(b) new bool*(new bool(b));
 
 /*
  * Container for Action which are called in events and their respective metadata.

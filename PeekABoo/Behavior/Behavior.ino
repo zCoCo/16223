@@ -44,34 +44,48 @@
 
  // STATE VARIABLES:
  struct RobotType{
-   bool* awake = new bool(false);
-   bool* eyes_open = new bool(false);
+   ActionState awake = new_ActionState(false);
+   ActionState eyes_open = new_ActionState(false);
  } Robot;
 
-bool* wakeUp(){
+bool** wakeUp(){
   eyeLids(100); // Eyes Start Closed (call this before the scheduler turns on)
-  Robot.eyes_open = sch->IN(500)->DO_LONG(blink(750));
+  //blink(750);
+  Robot.eyes_open = sch
+    ->NOW
+    ->do_([](){
+      blink(750);
+      **(Robot.eyes_open) = true;
+    });
   return sch
-    ->WHEN( *(Robot.eyes_open) )
-    ->DO([](){
+    ->WHEN( **(Robot.eyes_open) )
+    ->do_([](){
       moveEyeLidsTo(35);
-      *(Robot.awake) = true;
+      **(Robot.awake) = true;
     });
 } // #wakeUp
 
 void setup(){
   Serial.begin(9600);
+  Serial.print("Initializing");
+
   initHAL();
   moveStalks(0);
   moveHands(0);
 
   wakeUp();
-  sch->WHEN( *(Robot.awake) )->DO(chuckle());
+  Serial.print(" .");
+  sch->WHEN( **(Robot.awake) )->DO(chuckle());
+  Serial.print(" .");
 
-  sch->WHEN( true )->DO(Serial.println(PSTR("Hi!")));
-  sch->WHEN( *(Robot.eyes_open) )->DO(Serial.print(PSTR("Waking Up - ")); Serial.println(millis()));
-  sch->WHEN( *(Robot.awake) )->DO(Serial.print(PSTR("I'm Awake - ")); Serial.println(millis()));
+  Serial.print(" .");
+  sch->WHEN( **(Robot.eyes_open) )->DO(Serial.print("Waking Up - "); Serial.println(millis()));
+  Serial.print(" .");
+  sch->WHEN( **(Robot.awake) )->DO(Serial.print("I'm Awake - "); Serial.println(millis()));
+  Serial.println(" .");
 
+  sch->WHEN( true )->DO(Serial.println("Hi!")); // Make sure this is the last event in setup
+  Serial.println("Initialized.");
   //sch->EVERY(1500)->DO(Serial.print("Ping - "); Serial.println(millis()));
 } // #setup
 

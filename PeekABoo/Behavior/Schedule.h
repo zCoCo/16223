@@ -7,7 +7,9 @@
  * KNOWN BUGS / PROBLEMS:
  *  - Semi-Required memory leak on the %done% state of Actions. Need to have
  * some way of determining whether / how long other functions will need access to
- * this information after the Action has been deleted.
+ * this information after the Action has been deleted. NOTE: Until this is fixed,
+ * the ability to create unbounded series of SingleTimedEvents with #in_ is
+ * gone. Keep total number of events known and bounded.
  * Author: Connor W. Colombo, 9/21/2018
  * Version: 0.1.2
  * License: MIT
@@ -453,17 +455,21 @@ public:
 
   // Function to be Executed on Every Main Loop (as fast as possible)
   void loop(){
-    std::vector<Event*>::iterator it;
-    for(it = this->events.begin(); it != this->events.end();) {
-      if( (*it)->tryExecute() && (*it)->runs_once ){
+    // Iteration has to account for the fact that elements are intentionally
+    // deleted from the vector in the loop and potentially added at any call
+    // of #Event::tryExecute
+    std::vector<Event*>::size_type size = this->events.size();
+    std::vector<Event*>::size_type i = 0;
+    while(i < size){
+      if( this->events[i]->tryExecute() && this->events[i]->runs_once ){
         // Delete Event if it's been Executed and Only Runs Once
-        delete* it;
-        it = this->events.erase(it);
+        delete this->events[i]; // Delete the Event
+        this->events.erase(this->events.begin() + i); // Remove the addr from the vector
+        size--; // As far as we know, the vector is now smaller
       } else{
-        ++it; // Increment iterator normally
+        ++i; // Increment iterator normally
       }
     }
   } // #loop
-
 }; // Class: Schedule
 #endif // SCHEDULE_H

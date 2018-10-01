@@ -1,7 +1,7 @@
 #ifndef HAL_H
 #define HAL_H
 #include <Wire.h>
-//#include <CapacitiveSensor.h>
+#include <CapacitiveSensor.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Servo.h>
@@ -20,7 +20,7 @@ UltraSonicDistanceSensor sonar(P_TRIG, P_ECHO);
 #define CAP_SENS A1
 // Threshold Value for Detecting a Touch:
 #define CAP_THRESH 20
-//CapacitiveSensor capsens = CapacitiveSensor(CAP_PUSH,CAP_SENS);
+CapacitiveSensor capsens = CapacitiveSensor(CAP_PUSH,CAP_SENS);
 
 
 // Servo Motor Pins:
@@ -234,7 +234,7 @@ float dist(){
 
 // Returns Whether the Robot is Currently Being Touched on its Hands.
 bool touched(){
-  return false; // TODO: Implement me.
+  return capsens.capacitiveSensor(30) > 20;
 } // #touched
 
 // Determines if a person is actually present (and not noise)

@@ -42,57 +42,23 @@
  sch->EVERY(100)->DO(x++); // x or other variables accessed must be a global variables
  */
 
-#define RESTING_EYE_LEVEL 37
-
-void wakeUp(){
-  blink(750);
-  **(Robot.eyes_open) = true;
-  moveEyeLidsTo(RESTING_EYE_LEVEL);
-  moveStalks(100);
-  **(Robot.awake) = true;
-} // #wakeUp
-
 void setup(){
-  Serial.begin(9600);
-
   initHAL();
   moveStalks(0);
   moveHands(0);
   eyeLids(100); // Eyes Start Closed (call this before the scheduler turns on)
+  moveEyeLidsTo(40);
 
-  sch->WHEN(!**(Robot.awake) && personPresent())->do_(wakeUp);
+  sch->EVERY(1000)->DO(blink());
 
-  sch
-    ->WHEN( **(Robot.awake) )
-    ->do_([](){
-      Serial.println("I'm Awake.");
-      chuckle();
-      moveEyeLidsTo(RESTING_EYE_LEVEL);
-      sch->IN(1200)->do_([](){
-        coverEyes();
-        moveStalks(0);
-      });
-    });
+  sch->EVERY_WHILE(2000, dist() > 20)->DO(togglePeek());
 
-  sch->EVERY_WHILE( 1500, **(Robot.eyes_covered) )->do_(togglePeek);
+  sch->WHILE(dist() < 20)->DO(moveHands(100));
+  sch->EVERY_WHILE(700, dist() < 20)->DO(moveStalkLeft(100));
+  sch->EVERY_WHILE(1000, dist() < 20)->DO(moveStalkRight(100));
 
-  sch
-    ->WHEN( **(Robot.eyes_covered) && personPresent() )
-    ->do_([](){
-      uncoverEyes();
-      chuckle();
-      chuckle();
-      moveEyeLidsTo(RESTING_EYE_LEVEL);
-      moveStalks(100);
-    });
+  sch->WHEN(touched())->DO(uncoverEyes(); chuckle(); coverEyes(););
 
-  sch
-    ->WHEN(touched())
-    ->do_([](){
-      coverEyes();
-      delay(500);
-      moveStalks(0);
-    });
 } // #setup
 
 void loop(){

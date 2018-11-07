@@ -60,7 +60,11 @@ void tick(){
   SecondsHand.moveTo(360 * timeElapsed());
   SecondsHand.setSpeed(200);
   SecondsHand.runSpeedToPosition();
-  sch->IN(tick_time)->do_(tick);
+  if(timeElapsed() < 1.0){
+    sch->IN(tick_time)->do_(tick);
+  } else{
+    tone(BUZZ, 300, 1000);
+  }
 } // #tick
 
 void setup(){

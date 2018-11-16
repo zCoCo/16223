@@ -100,14 +100,13 @@ void loop(){
   }
 
   if(at_max && !fixing_max){
-    fixing_max = true;
     // Flip direction if displacement opposes direction of motion:
     if(dir != (diff < 0)){
       dir = !dir;
-      int steps_remaining = stepper.getStepsLeft();
       stepper.stop();
-      goTo((dir ? 1 : -1) * (180.0 - stepsToDeg(steps_remaining)), 50);
+      goTo((dir ? 1 : -1) * 180.0, 50);
     }
+    fixing_max = true;
   }
 
   if(stepper.getStepsLeft() == 0 && !fixing_max){

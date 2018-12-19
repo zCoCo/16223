@@ -16,6 +16,7 @@
  */
 #ifndef SCHEDULE_H
 #define SCHEDULE_H
+#include "Arduino.h"
 #include <ArduinoSTL.h>
 #include <vector>
 /* Example Usage (only call these once, likely in setup):

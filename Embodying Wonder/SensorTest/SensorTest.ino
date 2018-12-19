@@ -2,24 +2,22 @@
 
 #include "HAL.h"
 #include "Sensing.h"
-#include "Schedule.h"
-
-Schedule* sch = new Schedule();
 
 void setup(){
   Serial.begin(9600);
   initHAL();
-  schedule();
 } // #setup
 
-void schedule(){
-  sch->EVERY(200)->do_([](){
-    Serial.println(Sensors.diff);
-  });
-
-  sch->ALWAYS->DO(updateSensors);
-}
-
+unsigned long last_update = -10000;
 void loop(){
-  sch->loop();
+  if(millis() - last_update > 100){
+//    Serial.print(outputAng()); Serial.print(", ");
+//    Serial.print(inputAng()); Serial.print(", ");
+    Serial.println(Sensors.diff);
+//    Serial.print(getCommAng());
+//    Serial.print(", ");
+//    Serial.println(outputAng());
+    last_update = millis(); // Call at e of printing to have event e-start spacing
+  }
+  updateSensors();
 } // #loop

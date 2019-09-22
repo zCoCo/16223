@@ -4,6 +4,10 @@
 #include <Encoder.h>
 #include <CheapStepper.h>
 
+#define P_BUZZ 12
+#define FREQ_MIN 440
+#define FREQ_MAX 880
+
 #define ENC_STEPS_PER_REV 80.0
 Encoder EncO(3,4); // Output Encoder
 Encoder EncI(2,1); // Input Encoder
@@ -74,6 +78,8 @@ void setup(){
 
 char dir = 1;
 unsigned long last_update = -10000;
+int freq = FREQ_MIN;
+float curr_ang = 0.0;
 float diff = 0.0;
 float lag_sum = 0.0;
 unsigned long lag_count = 0;
@@ -81,6 +87,7 @@ bool at_max = false; // Whether currently at or above max torque (diff)
 bool fixing_max = false; // Whether steps are being taken to reduce torque for this max
 void loop(){
   stepper.run();
+
   if(millis() - last_update > 100){
 //    Serial.print(outputAng()); Serial.print(", ");
 //    Serial.print(inputAng()); Serial.print(", ");
@@ -90,6 +97,14 @@ void loop(){
 //    Serial.println(outputAng());
     last_update = millis(); // Call at e of printing to have event e-start spacing
   }
+
+  /*curr_ang = int(outputAng()) % 360;
+  if(curr_ang < 180){
+    freq = (FREQ_MAX - FREQ_MIN) * curr_ang / 180 + FREQ_MIN;
+  } else{
+    freq = (FREQ_MIN - FREQ_MAX) * (curr_ang - 180) / 180 + FREQ_MAX;
+  }
+  tone(P_BUZZ, freq);*/
 
   lag_sum += outputAng() - inputAng();
   lag_count += 1;
